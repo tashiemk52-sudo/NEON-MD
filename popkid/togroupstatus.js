@@ -16,8 +16,10 @@ commands.push({
     if (!isGroup) return reply("❌ Group only command!")
     if (!isOwner) return reply("❌ Owner Only Command!")
 
-    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage
-    const quotedParticipant = mek.message?.extendedTextMessage?.contextInfo?.participant
+    const contextInfo = mek.message?.extendedTextMessage?.contextInfo
+    const quoted = contextInfo?.quotedMessage
+    const quotedParticipant = contextInfo?.participant
+    const quotedStanzaId = contextInfo?.stanzaId
 
     const hasQuoted = !!quoted
 
@@ -38,8 +40,17 @@ commands.push({
       ffmpeg(tmpIn)
         .outputOptions(['-c:v libx264', '-c:a aac', '-movflags +faststart'])
         .save(tmpOut)
-        .on('end', () => { resolve(fs.readFileSync(tmpOut)); fs.unlinkSync(tmpIn); fs.unlinkSync(tmpOut) })
-        .on('error', reject)
+        .on('end', () => {
+          const result = fs.readFileSync(tmpOut)
+          try { fs.unlinkSync(tmpIn) } catch (_) {}
+          try { fs.unlinkSync(tmpOut) } catch (_) {}
+          resolve(result)
+        })
+        .on('error', (err) => {
+          try { fs.unlinkSync(tmpIn) } catch (_) {}
+          try { fs.unlinkSync(tmpOut) } catch (_) {}
+          reject(err)
+        })
     })
 
     // Helper: format audio buffer to mp4/aac using ffmpeg
@@ -50,15 +61,33 @@ commands.push({
       ffmpeg(tmpIn)
         .outputOptions(['-c:a aac'])
         .save(tmpOut)
-        .on('end', () => { resolve(fs.readFileSync(tmpOut)); fs.unlinkSync(tmpIn); fs.unlinkSync(tmpOut) })
-        .on('error', reject)
+        .on('end', () => {
+          const result = fs.readFileSync(tmpOut)
+          try { fs.unlinkSync(tmpIn) } catch (_) {}
+          try { fs.unlinkSync(tmpOut) } catch (_) {}
+          resolve(result)
+        })
+        .on('error', (err) => {
+          try { fs.unlinkSync(tmpIn) } catch (_) {}
+          try { fs.unlinkSync(tmpOut) } catch (_) {}
+          reject(err)
+        })
     })
 
     try {
       let statusPayload = {}
 
       if (hasQuoted) {
-        const quotedMsg = { message: quoted }
+        // Build proper Baileys message object for downloadMediaMessage
+        const quotedMsg = {
+          key: {
+            remoteJid: from,
+            fromMe: quotedParticipant === conn.user?.id,
+            id: quotedStanzaId,
+            participant: quotedParticipant
+          },
+          message: quoted
+        }
 
         if (quoted?.imageMessage) {
           const caption = q || quoted.imageMessage.caption || ""
@@ -76,28 +105,43 @@ commands.push({
         } else if (quoted?.audioMessage) {
           let buffer = await downloadMediaMessage(quotedMsg, "buffer", {})
           buffer = await formatAudio(buffer)
-          statusPayload = { audio: buffer, mimetype: "audio/mp4", ptt: true }
+          statusPayload = { audio: buffer, mimetype: "audio/mp4", ptt: false }
 
         } else if (quoted?.conversation || quoted?.extendedTextMessage?.text) {
-          statusPayload.text = quoted.conversation || quoted.extendedTextMessage.text
+          statusPayload.text = q || quoted.conversation || quoted.extendedTextMessage?.text
 
         } else {
           return reply("❌ Unsupported media type for group status.")
         }
 
-        if (q && !statusPayload.caption && !statusPayload.text) {
+        // Attach caption override if provided and not already set
+        if (q && statusPayload.image || q && statusPayload.video) {
           statusPayload.caption = q
         }
+
       } else {
         statusPayload.text = q
       }
 
-      // Send as status to group
+      // Collect all group member JIDs to send status to
+      let statusJidList = [from]
+      try {
+        const groupMeta = await conn.groupMetadata(from)
+        if (groupMeta?.participants?.length) {
+          statusJidList = groupMeta.participants.map(p => p.id)
+        }
+      } catch (_) {
+        // fallback to just 'from' if metadata fetch fails
+      }
+
+      // Send as broadcast status
       await conn.sendMessage('status@broadcast', statusPayload, {
-        statusJidList: [from]
+        statusJidList
       })
 
       await m.react("✅")
+      return reply("✅ Status sent to group members!")
+
     } catch (error) {
       console.error("togroupstatus error:", error)
       await m.react("❌")
