@@ -142,7 +142,7 @@ async function connectToWA() {
       } else if (connection === 'open') {
           console.log('[ ❤️ ] Installing Plugins...')
           fs.readdirSync("./popkid/").forEach((plugin) => {
-            if (path.extname(plugin).toLowerCase() === ".js") require("./plugins/" + plugin)
+            if (path.extname(plugin).toLowerCase() === ".js") require("./popkid/" + plugin)
           })
           console.log('[ 🪀 ] Bot connected to WhatsApp ✅')
 
