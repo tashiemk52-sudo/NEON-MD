@@ -1,5 +1,5 @@
 const { commands } = require('../command')
-const { downloadMediaMessage } = require('./lib')
+const { downloadMediaMessage } = require('../lib')
 const ffmpeg = require('fluent-ffmpeg')
 const fs = require('fs')
 const path = require('path')
