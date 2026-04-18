@@ -21,15 +21,32 @@ cmd({
       return reply("❌ Only the bot owner can clear DM chats.");
     }
 
-    await conn.chatModify({
-      delete: true,
-      lastMessages: [{
-        key: mek.key,
-        messageTimestamp: mek.messageTimestamp
-      }]
-    }, from);
+    await reply("⏳ Clearing chat...");
 
-    await reply("🗑️ *Chat cleared successfully!*");
+    // Load last 50 messages from store
+    const messages = Object.values(
+      conn.store?.messages?.[from]?.array || []
+    ).slice(-50);
+
+    if (!messages.length) {
+      return reply("⚠️ No messages found to clear. Chat may already be empty.");
+    }
+
+    let deleted = 0;
+
+    for (const msg of messages) {
+      try {
+        await conn.sendMessage(from, {
+          delete: msg.key
+        });
+        deleted++;
+        await new Promise(r => setTimeout(r, 300)); // small delay to avoid rate limit
+      } catch (e) {
+        // skip messages that can't be deleted
+      }
+    }
+
+    await reply(`🗑️ *Done! Deleted ${deleted} messages.*`);
 
   } catch (e) {
     console.error('[CLEARCHAT] Error:', e.message);
