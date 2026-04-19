@@ -40,7 +40,7 @@ const newsletterCtx = (sender, title, body, thumbnail, sourceUrl) => ({
 });
 
 cmd({
-    pattern: "play",
+    pattern: "marion",
     alias: ["song", "music"],
     desc: "Play and download a song from YouTube",
     category: "downloader",
